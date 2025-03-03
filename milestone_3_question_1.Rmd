@@ -1,0 +1,127 @@
+# Does sex bias exist at the university in the most current year available (1995)?
+
+```{r echo = T, results = 'hide'}
+library(dplyr)    # for data manipulation
+library(ggplot2)  # for plotting
+library(scales)   # for percentage scales in some plots (e.g. scale_y_continuous(labels=percent))
+```
+
+
+First, I will read in the whole dataset.
+```{r}
+salary_data <- read.table(file = "salary.txt", header = TRUE)
+salary_data
+```
+
+Next, filter data to the year 1995.
+```{r}
+salary_data_1995 <- salary_data[salary_data$year == 95, ]
+salary_data_1995
+```
+
+First, create visualizations for 1995 data: the distribution of academic field, year in which they attained their highest degree, year they were hired at the university, academic rank, and monthly salary in 1995 by sex.
+
+```{r}
+p_field_bar <- ggplot(salary_data_1995, aes(x = field, fill = sex)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Fields of Work by Sex in 1995 (Absolute Count)",
+       x = "Field",
+       y = "Count") +
+  theme_minimal()
+print(p_field_bar)
+```
+
+```{r}
+yrdeg_means <- salary_data_1995 %>%
+  group_by(sex) %>%
+  summarise(mean_yrdeg = mean(yrdeg, na.rm = TRUE))
+
+p7 <- ggplot(salary_data_1995, aes(yrdeg))
+plot_of_sex_vs_yrdeg <- p7 + geom_density(aes(fill = factor(sex)), alpha = 0.8) + 
+    geom_vline(
+    data = yrdeg_means,
+    aes(xintercept = mean_yrdeg),
+    linetype = "dashed",
+    linewidth = 1
+  ) +
+  labs(title = "Sex vs Year when Highest Degree was attained in 1995 (Density Plot)", 
+       x = "Year in which Highest Degree was Attained",
+       fill = "sex")
+plot_of_sex_vs_yrdeg
+```
+
+```{r}
+hire_data <- salary_data_1995 %>%
+  group_by(startyr, sex) %>%
+  summarise(count = n(), .groups = 'drop')
+
+avg_years <- hire_data %>%
+  group_by(sex) %>%
+  summarise(
+    avg_year = sum(startyr * count) / sum(count),  # Weighted mean
+    .groups = 'drop'
+  )
+avg_years
+```
+
+```{r}
+p_hire_timeseries <- ggplot(hire_data, aes(x = startyr, y = count, color = sex)) +
+  geom_line() +
+  # 3. Add vertical lines for each sex's average hire year
+  geom_vline(
+    data = avg_years,
+    aes(xintercept = avg_year, color = sex),
+    linetype = "dashed",
+    size = 1
+  ) +
+  labs(
+    title = "Number of Hires By Start Year for Employees in 1995",
+    x = "Year of Hire",
+    y = "Count"
+  ) +
+  theme_minimal()
+p_hire_timeseries
+```
+
+```{r}
+p_hire_dens <- ggplot(salary_data_1995, aes(x = startyr, fill = sex)) +
+  geom_density(alpha = 0.3, position = "fill") +
+  labs(title = "Percentage of Hires by Start Year For Employees in 1995",
+       x = "Year of Hire",
+       y = "Proportion") +
+  scale_y_continuous(labels = percent) +
+  theme_minimal()
+print(p_hire_dens)
+```
+
+```{r}
+p_rank_95_count <- ggplot(salary_data_1995, aes(x = rank, fill = sex)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Academic Rank in 1995 - Total Counts",
+       x = "Rank",
+       y = "Count") +
+  theme_minimal()
+print(p_rank_95_count)
+```
+
+```{r}
+p_rank_95_percent <- ggplot(salary_data_1995, aes(x = rank, fill = sex)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent) +
+  labs(title = "Academic Rank in 1995 - Percentage by Sex",
+       x = "Rank",
+       y = "Percentage") +
+  theme_minimal()
+print(p_rank_95_percent)
+```
+
+```{r}
+p_salary_95_box <- ggplot(salary_data_1995, aes(x = sex, y = salary, fill = sex)) +
+  geom_boxplot() +
+  labs(title = "Salary Distribution by Sex in 1995",
+       x = "Sex",
+       y = "Salary") +
+  theme_minimal()
+print(p_salary_95_box)
+```
+
