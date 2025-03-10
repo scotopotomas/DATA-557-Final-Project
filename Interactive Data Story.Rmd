@@ -1,0 +1,60 @@
+---
+title: "Interactive Data Story - Group Six"
+author: "Annie Staker, Edgar Lopez, Scott Fry"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Introduction to the problem and description of data available
+
+In this project we sought to understand whether bias existed in US faculty 
+salary data on the basis of sex. To do this, we sought to answer four questions: 
+1. Did sex bias exist at the university in the 1995?
+2. Has sex bias existed in the starting salaries of faculty members (salaries in 
+the year hired)?
+3. Has sex bias existed in granting salary increases between 1990 -1995?
+4. Has sex bias existed in granting promotions from Associate to full Professor?
+
+The data set includes information on faculty employed at a university in 1995. 
+In addition to a salary, sex, and an identifier, the data set contains 
+information on highest degree attained, year highest degree was attained, field, 
+start year, rank, case number, and whether the faculty member has an 
+administrative role.
+
+## Methods
+
+Methods that you will use to address all 4 specific questions
+
+To address these questions, we developed two deliverables: an interactive web 
+application and an interactive data story. The interactive web application was 
+written using RShiny and answers Question 3. It is available 
+[here (FIXME)](https://website-name.com). Data stories were written for 
+Questions 1, 2, and 4 and are included in the Results section below.
+
+## Results
+
+Present results for each scientific question
+- Interactive Data Stories Go Here
+
+The results presented in this section are interactive data stories for Questions 
+1, 2, and 4. The results and summary for Question 3 are part of the interactive 
+web application.
+
+### Question 1
+
+We want to answer the question, "Did sex bias exist at the university in the 
+1995?"
+
+### Question 2
+
+### Question 4
+
+## Summary
+
+Summarize the findings
