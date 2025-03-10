@@ -15,6 +15,7 @@ Introduction to the problem and description of data available
 
 In this project we sought to understand whether bias existed in US faculty 
 salary data on the basis of sex. To do this, we sought to answer four questions: 
+
 1. Did sex bias exist at the university in the 1995?
 2. Has sex bias existed in the starting salaries of faculty members (salaries in 
 the year hired)?
@@ -28,8 +29,6 @@ start year, rank, case number, and whether the faculty member has an
 administrative role.
 
 ## Methods
-
-Methods that you will use to address all 4 specific questions
 
 To address these questions, we developed two deliverables: an interactive web 
 application and an interactive data story. The interactive web application was 
