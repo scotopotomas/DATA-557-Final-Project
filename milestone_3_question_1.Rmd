@@ -125,3 +125,39 @@ p_salary_95_box <- ggplot(salary_data_1995, aes(x = sex, y = salary, fill = sex)
 print(p_salary_95_box)
 ```
 
+## NEXT: Use linear regression to answer the question, "Does sex bias exist at the university in 1995?"
+First, I will use simple linear regression with mean salary as the response variable and sex as the predictor variable. Then, I will use a more complicated multivariate linear regression that factors in more variables.
+
+Here is a simple linear regression with mean salary as the response variable and sex as the predictor.
+```{r}
+simple_model <- lm(salary ~ sex, data=salary_data_1995)
+summary(simple_model)
+```
+As we can see, sex is a predictor of salary. If we let $x_1$ be an indicator for male sex and $\beta_1$ be its coefficient, we reject the null hypothesis that $\beta_1 = 0$ with an alpha value of $\alpha < 2e-16$.
+
+Perhaps some of this difference can be explained by looking at other variables in the dataset. From the exploratory data analysis above, there appear to be discrepancies by sex with respect to rank, field, degree, year degree, start year, and admin. I suspect year degree and start year may be related, but I will begin by including both in my model.
+
+```{r}
+model2 <- lm(salary ~ sex + rank + field + deg + yrdeg + startyr + admin, data=salary_data_1995)
+summary(model2)
+```
+
+Without yrdeg:
+```{r}
+model3 <- lm(salary ~ sex + rank + field + deg + startyr + admin, data=salary_data_1995)
+summary(model3)
+```
+
+without startyr:
+```{r}
+model4 <- lm(salary ~ sex + rank + field + deg + yrdeg + admin, data=salary_data_1995)
+summary(model4)
+```
+
+When we exclude yrdeg, we see that startyr's p-value is high, 0.303. We will remove it, as when only yrdeg is included it has a p-value of 1.34e-08.
+
+```{r}
+model5 <- lm(salary ~ sex + rank + field + deg + admin, data=salary_data_1995)
+summary(model5)
+```
+
