@@ -30,6 +30,55 @@ p_field_bar <- ggplot(salary_data_1995, aes(x = field, fill = sex)) +
   theme_minimal()
 print(p_field_bar)
 ```
+```{r}
+salary_data_1995_prop <- salary_data_1995 %>%
+  count(field, sex) %>%  # Count occurrences per field and sex
+  group_by(field) %>%  
+  mutate(prop = n / sum(n))  # Compute proportion
+
+p_field_bar <- ggplot(salary_data_1995_prop, aes(x = field, y = prop, fill = sex)) +
+  geom_bar(stat = "identity", position = "stack") +  # Use "stack" for a stacked bar chart
+  labs(title = "Fields of Work by Sex in 1995 (Stacked Proportion)",
+       x = "Field",
+       y = "Proportion") +
+  theme_minimal()
+
+print(p_field_bar)
+```
+
+```{r}
+salary_data_1995_prop <- salary_data_1995 %>%
+  count(admin, sex) %>%  # Count occurrences per field and sex
+  group_by(admin) %>%  
+  mutate(prop = n / sum(n))  # Compute proportion
+
+p_field_bar <- ggplot(salary_data_1995_prop, aes(x = admin, y = prop, fill = sex)) +
+  geom_bar(stat = "identity", position = "stack") +  # Use "stack" for a stacked bar chart
+  labs(title = "Possession of Admin Status by Sex in 1995 (Stacked Proportion)",
+       x = "Admin",
+       y = "Proportion") +
+  theme_minimal()
+
+print(p_field_bar)
+```
+
+```{r}
+salary_data_1995_prop <- salary_data_1995 %>%
+  count(deg, sex) %>%  # Count occurrences per field and sex
+  group_by(deg) %>%  
+  mutate(prop = n / sum(n))  # Compute proportion
+
+p_field_bar <- ggplot(salary_data_1995_prop, aes(x = deg, y = prop, fill = sex)) +
+  geom_bar(stat = "identity", position = "stack") +  # Use "stack" for a stacked bar chart
+  labs(title = "Possession of Deg Status by Sex in 1995 (Stacked Proportion)",
+       x = "Deg",
+       y = "Proportion") +
+  theme_minimal()
+
+print(p_field_bar)
+```
+
+
 
 ```{r}
 yrdeg_means <- salary_data_1995 %>%
