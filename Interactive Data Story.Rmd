@@ -1,6 +1,6 @@
 ---
 title: "Interactive Data Story - Group Six"
-author: "Annie Staker, Edgar Lopez, Scott Fry"
+author: "Annie Staker, Edgar Lopez, Scott Fry" [FIXME should we include Srimant and Cat here since we describe both the interaction data story and the Shiny app here?]
 date: "`r Sys.Date()`"
 output: html_document
 ---
@@ -23,10 +23,12 @@ the year hired)?
 4. Has sex bias existed in granting promotions from Associate to full Professor?
 
 The data set includes information on faculty employed at a university in 1995. 
-In addition to a salary, sex, and an identifier, the data set contains 
+The data set includes monthly salary, sex, a unique faculty member identifier, 
 information on highest degree attained, year highest degree was attained, field, 
-start year, rank, case number, and whether the faculty member has an 
-administrative role.
+start year, rank, and whether the faculty member has an administrative role. The
+monthly salary, rank and whether the faculty member has an administrative role may
+vary by year, all other variables will be consistent across a faculty member for all
+of their records.
 
 ## Methods
 
