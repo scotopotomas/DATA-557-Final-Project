@@ -26,10 +26,10 @@ salary_data_1995 <- salary_data[salary_data$year == 95, ]
 simple_model <- lm(salary ~ sex, data=salary_data_1995)
 summary(simple_model)
 ```
-This shows clear evidence that there is an association between salary and sex. If we let $\beta_1$ be the coefficient of the variable indicating a male, we reject the null hypothesis that $\beta_1 = 0$ with an alpha value less than $2e-16$. Further, this model indicates that moving from female to male results in a salary 
-increase of $1334.73. However, could there be lurking variables we should consider?
+This appears to show clear evidence that there is an association between salary and sex. If we let $\beta_1$ be the coefficient of the variable indicating a male, we reject the null hypothesis that $\beta_1 = 0$ with an alpha value less than $2e-16$. Further, this model indicates that moving from female to male results in a salary 
+increase of $1334.73. However, the adjusted R-squared value is low - just 0.08129. Could there be lurking variables we should consider?
 
-Next, we will address this question by adding more explanatory variables to the linear regression. To decide which variables to include, we did some exploratory data analysis. We looked for variables that were not evenly distributed by sex.
+We will address these question by adding more explanatory variables to the linear regression. To decide which variables to include, we did some exploratory data analysis. We looked for variables that were not evenly distributed by sex.
 
 ```{r}
 p_rank_95_percent <- ggplot(salary_data_1995, aes(x = rank, fill = sex)) +
@@ -121,6 +121,8 @@ model_no_startyr <- lm(salary ~ sex + rank + field + deg + yrdeg + admin, data=s
 summary(model_no_startyr)
 ```
 In this model, the p-value for yrdeg, $1.34e-08$, is less than the alpha value $0.05$. We reject the null hypothesis that the coefficient of yrdeg is not equal to $0$. In fact, every coefficient in this model is statistically significantly different than $0$. We will use this model to discuss differences in salary.
+
+The Adjusted R-Squared value in the previous two models are similar - 0.5122 versus 0.5217. These are both much higher than the Adjusted R-Squared of 0.08129 from the original model using simple linear regression.
 
 For each indicator variable in our model, the coefficient represents the average difference in salary between the group represented by the indicator variable and the reference group(s), holding other variables constant. In this model, the variables rankFull, fieldProf, and admin have the highest coefficients. These each correspond to the most prestigious class in each categorical variable.
 
