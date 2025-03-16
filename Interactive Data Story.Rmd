@@ -52,6 +52,517 @@ We want to answer the question, "Did sex bias exist at the university in the
 
 ### Question 2
 
+```{r load libraries, include=FALSE}
+library(tidyverse)
+library(scales)
+library(gt)
+library(lmtest)
+library(sandwich)
+library(sjPlot)
+
+suppressMessages(library(tidyverse))
+suppressMessages(library(gt))
+options(dplyr.summarise.inform = FALSE)
+```
+
+```{r Load Data, echo = FALSE}
+salary <- read_fwf(
+  file = "salary.txt",
+  col_positions = fwf_cols(
+    case = c(1,5),
+    id = c(6,10),
+    sex = c(11,17),
+    deg = c(18,23),
+    yrdeg = c(24,29),
+    field = c(30,35),
+    startyr = c(36,43),
+    year = c(44,48),
+    rank = c(49,55),
+    admin = c(56,61),
+    salary = c(62,71)),
+  col_types = "ccffifiiffn",
+  skip = 1)
+```
+
+```{r analyze data, echo = FALSE}
+salary_by_id <- salary %>%
+  group_by(id) %>%
+  summarize(n())
+```
+
+### Question 2
+
+We want to answer the question: "Has sex bias existed in the starting salaries of faculty members (salaries in the year hired)?"
+
+We'll define our null hypothesis as there being no difference in starting monthly salary of faculty due to the sex and our alternative hypothesis as there being a difference in starting monthly salary of faculty by sex.
+
+Looking at our data set, the first step is to identify what data we need to answer the question. Since this question is focused on whether sex bias existed in the starting salaries of faculty members we need to focus our analysis on the salary for each faculty member in the year they started at the university which is represented by the variable *startyr*.
+
+As described above, the full data set consists of one record per faculty member per year between 1976 and 1995. Faculty member data is only available for the years they are employed at the university and faculty members may have between 1 and 20 records per faculty member. There are 19,792 records and 1,597 unique faculty members. 
+
+A quick frequency table of the startyr variable shows that the startyr variable goes back to 1948 while we only have salary data back to 1976. This suggests that we will not be able to include all of the faculty members in determining whether there is sex bias in the starting salaries of faculty members since we do not observe the starting salaries of faculty members hired before 1976. 
+
+```{r startyr range, echo = FALSE}
+table(salary$startyr)
+```
+In order to select the right data for faculty members that we have starting salary data for we'll want to filter the full salary data for the condition *year = startyr*. This will remove faculty members whose starting year is before 1976 (since the year variable range is 76 to 95) and it will include only a single record for each faculty member that represents the starting monthly salary as of their starting year. Since the variables for rank and whether a faculty member has an administrative role may change by year, this filter will ensure that we capture the rank of the faculty member and whether they are serving in an administrative role as of the year they are hired.
+
+```{r filter to required data, echo = FALSE}
+salary_starting_year <- filter(salary, startyr == year)
+```
+
+After applying the filter described above we have a data set with 1,107 records representing 1,107 unique faculty members and their monthly salary and other characteristics as of the year they started at the university.
+
+The str command gives a quick overview of the data set and identifies the variables, variable types, levels (for factor variables) and some example data for each variable. 
+
+```{r data summary, echo = FALSE}
+str(salary_starting_year)
+```
+In order to focus on the most important variables it will be helpful to remove some variables that don't have any value in our analysis. As an example, the case variable is a row number, which won't be useful in this analysis. Similarly the id variable will be unique for each faculty member and because of the structure of the data and filter that we applied earlier requiring *year = startyr* we will have one unique id per faculty member included. We can also drop either the year or startyr variable since they will have the same variable for every record. The code below confirms that we have unique values for case and id and that startyr is the same as year for every record. It subsequently drops the case, id, and year variables.
+
+```{r data cleanup, echo = FALSE}
+print(paste0("The number of rows in the data is: ",nrow(salary_starting_year),"."))
+print(paste0("The number of unique values for the case variable is: ",n_distinct(salary_starting_year$case),"."))
+print(paste0("The number of unique values for the id variable is: ",n_distinct(salary_starting_year$id),"."))
+print(paste0("The number of records where year = startyr is: ", sum(salary_starting_year$startyr == salary_starting_year$year),"."))
+
+salary_starting_year <- salary_starting_year %>%
+  select(-c(id, case, year))
+```
+Now that we have filtered to the right data set, some descriptive statistics will help us select the right model. I start with a table for the factor variables.
+
+```{r descriptive statistics table 1D, echo = FALSE}
+  gtsummary::tbl_summary(select(salary_starting_year, -c(startyr, yrdeg, salary)))
+```
+
+We notice that our data contains about one-third female faculty and two-thirds male faculty. For the degree variable, PhD is by far the most common degree with 84% of the faculty holding a PhD and Other and Professional degrees accounting for the remaining 16% of faculty. The field is tilted towards Other representing about two-thirds of records and about one-sixth Arts and one-fifth Professional. The rank is heavily weighted towards assistant professors. Less than 5% of the faculty had administrative responsibilities.
+
+The box plot below helps show the distribution of the starting monthly salary as well as the presence of some outliers. 
+
+```{r descriptive statistics monthly salary 1D, echo = FALSE}
+  boxplot(salary_starting_year$salary, main = "Starting Monthly Salary for Faculty", ylab = "Monthly Salary (USD)")
+```
+
+Seeing the count of yrdeg shows that we have more data for more recent years. We have the most records in 1991 with 108 and the fewest records in 1982 with 22.
+
+```{r descriptive statistics startyr 1D, echo = FALSE}
+  ggplot(salary_starting_year, aes(startyr)) + 
+  geom_bar() + 
+  theme_minimal() + 
+  labs(x = "Starting Year", y = "Count", title = "Frequency of Starting Year") +
+  geom_text(stat='count', aes(label = after_stat(count)), vjust=-0.5)
+```
+
+The count of the year the highest degree was earned by the faculty shows the majority of degrees were earned between 1970 and 1990, which aligns with new professors starting between 1976 and 1995. The oldest degree was earned in 1948 and the latest in 1996.
+
+```{r descriptive statistics highest degree 1D, echo = FALSE}
+  ggplot(salary_starting_year, aes(yrdeg)) + 
+  geom_bar() + 
+  theme_minimal() + 
+  labs(x = "Year Highest Degree was Earned", y = "Count", title = "Frequency of Year Highest Degree was Earned") +
+  geom_text(stat='count', aes(label = after_stat(count)), vjust=-0.5, size = 3)
+```
+
+Given our primary goal is to understand the possibility of sex bias in salary it would be helpful to understand that fundamental relationship. The graph below shows all of the monthly starting salaries by year with red dots representing female faculty members and blue dots representing male faculty members.
+
+```{r descriptive statistics salary by sex 2D dotplot, echo = FALSE}
+  ggplot(salary_starting_year, aes(x = startyr, y = salary, color = sex)) + 
+  geom_point() +
+  theme_minimal() + 
+  labs(title = "Starting Faculty Monthly Salary by Year and sex",
+       x = "Year",
+       y = "Monthly Salary")
+```
+
+From the graph above it appears that the salary for men may be higher, but it's difficult to tell because a lot of the points are overlapping. Adding the jitter feature to the dots makes it a little easier to distinguish where there is a high volume of dots present.
+
+```{r descriptive statistics salary by sex 2D dotplot jitter, echo = FALSE}
+  ggplot(salary_starting_year, aes(x = startyr, y = salary, color = sex)) + 
+  geom_jitter(width = 0.1) +
+  theme_minimal() + 
+  labs(title = "Starting Faculty Monthly Salary by Year and sex",
+       x = "Year",
+       y = "Monthly Salary")
+```
+
+It's easier to tell that there are more outliers in the data, but adding a line representing the mean salary by year for each sex makes it even easier to distinguish between the two.
+
+```{r descriptive statistics salary by sex 2D dotplot jitter meanline, echo = FALSE}
+  salary_starting_year_mean_by_yrsex <- salary_starting_year %>% 
+  group_by(startyr, sex) %>%
+  summarize(mean_val = mean(salary))
+
+  ggplot(salary_starting_year, aes(x = startyr, y = salary, color = sex)) + 
+  geom_jitter(width = 0.1) +
+  theme_minimal() + 
+  labs(title = "Starting Faculty Monthly Salary by Year and sex",
+       x = "Year",
+       y = "Monthly Salary") + 
+  geom_line(data = salary_starting_year_mean_by_yrsex, aes(x = startyr, y = mean_val, color = sex), linewidth = 1.5)
+```
+
+We can clearly tell that the average starting salary for male faculty is higher in every year than the average starting salary for female faculty. However, we can't yet conclude that the explanation for the different in average starting salary is bias. The relationship could be explained by other characteristics, for example, men could be more like to join the faculty with more experience or as higher ranked faculty or in more lucrative fields. We'll want to explore the relationships between these variables, starting salary, and sex in order to determine whether the difference in starting salary is explained by differences in other characteristics. We'll start this exploration by using descriptive statistics to evaluate the relationships between these variables. 
+
+The graphs show the relationship between starting salary and rank and between rank and sex. The first graph shows that a higher rank is associated with a higher starting salary. The second chart shows that female faculty members are more likely to be hired into assistant professor positions rather than higher paying full professor or associate professor positions. This suggests that rank may be a variable that is accounting for some of the variability in starting salary by sex.
+
+```{r descriptive statistics salary by rank and rank by sex 2D, echo = FALSE}
+  salary_starting_year_mean_startyr_rank <- salary_starting_year %>% 
+  group_by(startyr, rank) %>%
+  summarize(mean_val = mean(salary))
+
+  ggplot(salary_starting_year, aes(x = startyr, y = salary, color = rank)) + 
+  geom_jitter(width = 0.1) +
+  theme_minimal() + 
+  labs(title = "Starting Faculty Monthly Salary by Year and Rank",
+       x = "Year",
+       y = "Monthly Salary") + 
+  geom_line(data = salary_starting_year_mean_startyr_rank, aes(x = startyr, y = mean_val, color = rank), linewidth = 1.5)
+  
+  salary_year_sex_rank <- salary_starting_year %>%
+  select(startyr, sex, rank) %>% # Select only the startyr, sex, and rank variables
+  group_by(startyr, sex, rank) %>% 
+  summarize(rank_count_by_year_sex = n()) %>% # Count the number of entries by year, sex, and rank
+  ungroup() %>%
+  group_by(startyr, sex) %>% 
+  # Count the proportion of faculty in each field grouped by sex and year
+  mutate(rank_proportion = rank_count_by_year_sex / sum(rank_count_by_year_sex)) %>% 
+  select(-rank_count_by_year_sex)
+
+ggplot(data = salary_year_sex_rank, aes(x = startyr, y = rank_proportion, fill = sex)) + # Use year as the x variable, sex as the grouping variable and the proportion as the height of the bar
+  geom_bar(position = position_dodge(0.7), stat="identity", width = 0.7) + 
+  facet_grid(rank ~ .) + # Facets the graph by field for easier comparison
+  theme_light() + # Good theme for faceted charts
+  labs(title = "Academic Rank Proportion by Starting Year and Sex") +
+  ylab("Proportion of Faculty") + 
+  xlab("Year") + 
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) # Changes the y-axis to show proportion as a percent
+```
+
+We'll do a similar analysis examining the relationship between starting salary and field and between field and sex. We observe that the Professional Field has a higher average starting salary followed by the Other and then Arts fields. When we look at the field distribution by sex we observe that female faculty members appear to have a lower proportion in the Professional field category and a higher proportion in the Arts field category compared to male faculty members. This suggests that field may also be a variable that is correlated with both salary and sex.
+
+```{r descriptive statistics salary by field and field by sex 2D, echo = FALSE}
+  salary_starting_year_mean_startyr_field <- salary_starting_year %>% 
+  group_by(startyr, field) %>%
+  summarize(mean_val = mean(salary))
+
+  ggplot(salary_starting_year, aes(x = startyr, y = salary, color = field)) + 
+  geom_jitter(width = 0.1) +
+  theme_minimal() + 
+  labs(title = "Starting Faculty Monthly Salary by Year and Field",
+       x = "Year",
+       y = "Monthly Salary") + 
+  geom_line(data = salary_starting_year_mean_startyr_field, aes(x = startyr, y = mean_val, color = field), linewidth = 1.5)
+  
+  salary_year_sex_field <- salary_starting_year %>%
+  select(startyr, sex, field) %>% # Select only the startyr, sex, and field variables
+  group_by(startyr, sex, field) %>% 
+  summarize(field_count_by_year_sex = n()) %>% # Count the number of entries by year, sex, and field
+  ungroup() %>%
+  group_by(startyr, sex) %>% 
+  # Count the proportion of faculty in each field grouped by sex and year
+  mutate(field_proportion = field_count_by_year_sex / sum(field_count_by_year_sex)) %>% 
+  select(-field_count_by_year_sex)
+
+ggplot(data = salary_year_sex_field, aes(x = startyr, y = field_proportion, fill = sex)) + # Use year as the x variable, sex as the grouping variable and the proportion as the height of the bar
+  geom_bar(position = position_dodge(0.7), stat="identity", width = 0.7) + 
+  facet_grid(field ~ .) + # Facets the graph by field for easier comparison
+  theme_light() + # Good theme for faceted charts
+  labs(title = "Academic field Proportion by Starting Year and Sex") +
+  ylab("Proportion of Faculty") + 
+  xlab("Year") + 
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) # Changes the y-axis to show proportion as a percent
+```
+
+After observing the relationships between salary and sex and between rank, salary, and sex and field, salary, and sex, we may conclude that female faculty members have lower average starting salaries, but that they are also hired into faculty ranks and fields that are correlated with lower starting salaries. This suggests that our approach must take into account the additional characteristics of the faculty members that may be affecting the direct relationship between starting salary and sex. One approach that can be used to analyze this type of relationship is multiple linear regression. It is an approach that allows us to see the relationship between two variables while controlling for additional variables. The initial model below uses monthly salary as the response variable and includes start year, sex, highest degree earned, rank, field, and administrative responsibility as the explanatory variables, we will be interested in determining whether sex is a meaningful variable in explaining variance in the monthly starting salary after controlling for the other explanatory variables.
+
+```{r simple multiple linear regression, echo = FALSE}
+model_1 <- lm(salary ~ startyr + sex + deg + rank + field + admin, data = salary_starting_year)
+summary(model_1)
+```
+Looking at the model output we observe that all of our variables appear to be statistically significant at the 0.1% level with the exception of admin1 which indicates when a faculty member has administrative responsibilities which is significant at the 1% level and degPhD which indicates when the highest degree earned is a PhD which is not statistically significant at the 10% level. This initial model suggests that after controlling for the other variables male faculty members make approximately $215 more per month in terms of starting salary. 
+
+Most of what we observed in the descriptive statistics analysis is borne out in the linear model. We see that full professors have higher salaries than Associate and Assistant professors and that Associate professors have higher salaries than Assistant Professors. We also observe that the salaries by field are ranked in descending order as Professional, Other, and Arts. As we expected having administrative responsibilities tends to have a positive impact on salary. One nuance here is that the startyr variable is helping explain the trend in starting salaries over time. As we observe that the average starting salary increases over time, the startyr variable is estimating a $194 average increase in monthly starting salary per year.
+
+A few peculiarities of the model are showing up, for one, we see that having a PhD doesn't seem to affect the total starting salary, this may be because there is not a lot of variation within the degree variable, with 84% of all records showing PhDs, this may also be due to a correlation between the field variable and the degree variable where some of the highest starting salaries are in the Professional field which tends to have fewer PhDs and more Professional degrees, this suggests an interaction term between degree and field may be helpful to explain the variation.
+
+One characteristic that we haven't accounted for in the analysis and didn't include in the initial linear model is the year that the faculty member got their highest degree *yrdeg*. The reason I excluded that variable from the initial model is that it is highly correlated with the year that a faculty member started at the university *startyr*. In the graph below we'll observe that the year that the faculty member got their highest degree is nearly always before the year they started at the university and that later startyr values are associated with later yrdeg values. The diagonal line in the graph below is where startyr = yrdeg, the dots below the line indicate faculty where the year they finished their highest degree is before the year they started at the university. Dots on the line indicate faculty where the year they finished their highest degree is the same as the year they started at the university and the few dots above the line indicate where the faculty member finished their highest degree after starting at the university.
+
+```{r descriptive statistics startyr vs. yrdeg, echo = FALSE}
+ggplot(data = salary_starting_year, aes(x = startyr, y = yrdeg)) + 
+  geom_point() +
+  theme_minimal() +
+  geom_abline(aes(intercept = 0, slope = 1), linewidth = 1)
+```
+
+The problem with not using the yrdeg variable is that it may represent valuable information in that the difference between yrdeg and startyr represents experience a faculty member gained after they finished their highest degree, but before they started at the university. One solution to avoid multicollinearity in the model is to create a feature that captures the important information in the yrdeg variable. I recommend creating a variable that represents experience calculated as max(startyr-yrdeg, 0). The startyr-yrdeg calculation represents the years of experience. The reason I use the max calculation is to account for people that get their highest degree after starting on the faculty. I use zero years of experience in that case rather than a negative value. An alternative approach could be including a negative value or including an indicator for when startyr is less than yrdeg.
+
+```{r experience variable, echo = FALSE}
+salary_starting_year <- salary_starting_year %>%
+  mutate(experience = ifelse(startyr-yrdeg<0,0,startyr-yrdeg))
+```
+
+The revised model below incorporates the experience variable and includes the interaction terms between degree and field.
+
+```{r complex multiple linear regression, echo = FALSE}
+model_2 <- lm(salary ~ startyr + experience + sex + deg*field + rank + admin, data = salary_starting_year)
+summary(model_2)
+```
+
+Looking at the model output it doesn't appear that the interaction effect is having much of an impact, but the experience variable is explaining some of the variance. The overall model fit (Multiple R-squared) is seeing only a very small improvement.
+
+The first ANOVA model below compares the original model and the model with the experience variable and the interaction effect between degree and field, it appears that the added variables are significant at the 0.1% level. I also created a model with the experience variable, but without the interaction term between degree and field, then used a second ANOVA model to compare the model with the experience variable and the interaction effect to the model with the experience variable and without the interaction effect. While the interaction effect appears significant at the 5% significance level I would recommend removing it from the model due to the fact that it adds a lot of complexity but not much explainability and one of the levels of the interaction effect between a Professional degree and the Arts field is completely empty (meaning there are no examples of faculty in their starting year with a Professional degree as their highest degree in the Arts field).
+
+```{r compare multiple linear regression, echo = FALSE}
+anova(model_1, model_2)
+
+model_3 <- lm(salary ~ startyr + experience + sex + deg + field + rank + admin, data = salary_starting_year)
+anova(model_2, model_3)
+
+```
+After this analysis I would recommend using model 3 which includes salary as the response variable and startyr, experience, sex, deg, field, rank, and admin as the explanatory variables.
+
+The residual model graphs below suggest that we have some heteroskedasticity as the variance of the residuals increases as the predicted values increase. Looking at the QQ-plot and density plot we also have some large outliers that aren't as well explained by the model. The density plot looks approximately normal except for those large outliers to the right.
+
+```{r evaluate model residuals, echo = FALSE}
+summary(model_3)
+plot(model_3$fitted.values, model_3$residuals)
+qqnorm(residuals(model_3))
+qqline(residuals(model_3))
+plot(density(residuals(model_3)))
+```
+
+Given the heteroskedasticity I would recommend using robust errors for estimating the coefficients and confidence intervals.
+
+```{r robust errors, echo = FALSE}
+tab_model(model_3, vcov.fun = "HC1", show.se = TRUE)
+```
+
+The model analysis suggests that we reject the null hypothesis that sex does not have an impact on the starting salary of faculty at the university for faculty starting between 1976 and 1995. The 95% confidence interval estimate of the size of the impact using robust errors is \$86 - \$297 per month.
+
+### Code Appendix 
+
+```{r code appendix, , fig.show = 'hide', results = "hide"}
+
+# Environment Setup
+
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(scales)
+library(gt)
+library(lmtest)
+library(sandwich)
+library(sjPlot)
+
+suppressMessages(library(tidyverse))
+suppressMessages(library(gt))
+options(dplyr.summarise.inform = FALSE)
+
+# Load Data
+
+salary <- read_fwf(
+  file = "salary.txt",
+  col_positions = fwf_cols(
+    case = c(1,5),
+    id = c(6,10),
+    sex = c(11,17),
+    deg = c(18,23),
+    yrdeg = c(24,29),
+    field = c(30,35),
+    startyr = c(36,43),
+    year = c(44,48),
+    rank = c(49,55),
+    admin = c(56,61),
+    salary = c(62,71)),
+  col_types = "ccffifiiffn",
+  skip = 1)
+
+# Startyr range
+
+table(salary$startyr)
+
+# Filter Data
+
+salary_starting_year <- filter(salary, startyr == year)
+
+# Data Summary
+
+str(salary_starting_year)
+
+# Data Clean-Up and Calculations
+
+print(paste0("The number of rows in the data is: ",nrow(salary_starting_year),"."))
+print(paste0("The number of unique values for the case variable is: ",n_distinct(salary_starting_year$case),"."))
+print(paste0("The number of unique values for the id variable is: ",n_distinct(salary_starting_year$id),"."))
+print(paste0("The number of records where year = startyr is: ", sum(salary_starting_year$startyr == salary_starting_year$year),"."))
+
+salary_starting_year <- salary_starting_year %>%
+  select(-c(id, case, year))
+
+# Descriptive Statistics table for Factor Variables
+
+gtsummary::tbl_summary(select(salary_starting_year, -c(startyr, yrdeg, salary)))
+
+# Boxplot of monthly salary
+
+boxplot(salary_starting_year$salary, main = "Starting Monthly Salary for Faculty", ylab = "Monthly Salary (USD)")
+
+# Bar chart of startyr frequency
+
+ggplot(salary_starting_year, aes(startyr)) + 
+  geom_bar() + 
+  theme_minimal() + 
+  labs(x = "Starting Year", y = "Count", title = "Frequency of Starting Year") +
+  geom_text(stat='count', aes(label = after_stat(count)), vjust=-0.5)
+
+# Bar chart of yrdeg frequency
+
+  ggplot(salary_starting_year, aes(yrdeg)) + 
+  geom_bar() + 
+  theme_minimal() + 
+  labs(x = "Year Highest Degree was Earned", y = "Count", title = "Frequency of Year Highest Degree was Earned") +
+  geom_text(stat='count', aes(label = after_stat(count)), vjust=-0.5, size = 3)
+
+# Initial Chart - Starting Monthly Salary by Year and Gender
+  
+  ggplot(salary_starting_year, aes(x = startyr, y = salary, color = sex)) + 
+  geom_point() +
+  theme_minimal() + 
+  labs(title = "Starting Faculty Monthly Salary by Year and sex",
+       x = "Year",
+       y = "Monthly Salary")
+
+# Jitter Chart - Starting Monthly Salary by Year and Gender
+  
+  ggplot(salary_starting_year, aes(x = startyr, y = salary, color = sex)) + 
+  geom_jitter(width = 0.1) +
+  theme_minimal() + 
+  labs(title = "Starting Faculty Monthly Salary by Year and sex",
+       x = "Year",
+       y = "Monthly Salary")
+
+# Jitter Chart with Line - Starting Monthly Salary by Year and Gender
+  
+  salary_starting_year_mean_by_yrsex <- salary_starting_year %>% 
+  group_by(startyr, sex) %>%
+  summarize(mean_val = mean(salary))
+
+  ggplot(salary_starting_year, aes(x = startyr, y = salary, color = sex)) + 
+  geom_jitter(width = 0.1) +
+  theme_minimal() + 
+  labs(title = "Starting Faculty Monthly Salary by Year and sex",
+       x = "Year",
+       y = "Monthly Salary") + 
+  geom_line(data = salary_starting_year_mean_by_yrsex, aes(x = startyr, y = mean_val, color = sex), linewidth = 1.5)
+
+# Relationship between Salary and Rank and Rank and Gender
+  
+    salary_starting_year_mean_startyr_rank <- salary_starting_year %>% 
+  group_by(startyr, rank) %>%
+  summarize(mean_val = mean(salary))
+
+  ggplot(salary_starting_year, aes(x = startyr, y = salary, color = rank)) + 
+  geom_jitter(width = 0.1) +
+  theme_minimal() + 
+  labs(title = "Starting Faculty Monthly Salary by Year and Rank",
+       x = "Year",
+       y = "Monthly Salary") + 
+  geom_line(data = salary_starting_year_mean_startyr_rank, aes(x = startyr, y = mean_val, color = rank), linewidth = 1.5)
+  
+  salary_year_sex_rank <- salary_starting_year %>%
+  select(startyr, sex, rank) %>% # Select only the startyr, sex, and rank variables
+  group_by(startyr, sex, rank) %>% 
+  summarize(rank_count_by_year_sex = n()) %>% # Count the number of entries by year, sex, and rank
+  ungroup() %>%
+  group_by(startyr, sex) %>% 
+  # Count the proportion of faculty in each field grouped by sex and year
+  mutate(rank_proportion = rank_count_by_year_sex / sum(rank_count_by_year_sex)) %>% 
+  select(-rank_count_by_year_sex)
+
+ggplot(data = salary_year_sex_rank, aes(x = startyr, y = rank_proportion, fill = sex)) + # Use year as the x variable, sex as the grouping variable and the proportion as the height of the bar
+  geom_bar(position = position_dodge(0.7), stat="identity", width = 0.7) + 
+  facet_grid(rank ~ .) + # Facets the graph by field for easier comparison
+  theme_light() + # Good theme for faceted charts
+  labs(title = "Academic Rank Proportion by Starting Year and Sex") +
+  ylab("Proportion of Faculty") + 
+  xlab("Year") + 
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) # Changes the y-axis to show proportion as a percent
+
+# Relationship between Salary and Field and Field and Gender
+
+  salary_starting_year_mean_startyr_field <- salary_starting_year %>% 
+  group_by(startyr, field) %>%
+  summarize(mean_val = mean(salary))
+
+  ggplot(salary_starting_year, aes(x = startyr, y = salary, color = field)) + 
+  geom_jitter(width = 0.1) +
+  theme_minimal() + 
+  labs(title = "Starting Faculty Monthly Salary by Year and Field",
+       x = "Year",
+       y = "Monthly Salary") + 
+  geom_line(data = salary_starting_year_mean_startyr_field, aes(x = startyr, y = mean_val, color = field), linewidth = 1.5)
+  
+  salary_year_sex_field <- salary_starting_year %>%
+  select(startyr, sex, field) %>% # Select only the startyr, sex, and field variables
+  group_by(startyr, sex, field) %>% 
+  summarize(field_count_by_year_sex = n()) %>% # Count the number of entries by year, sex, and field
+  ungroup() %>%
+  group_by(startyr, sex) %>% 
+  # Count the proportion of faculty in each field grouped by sex and year
+  mutate(field_proportion = field_count_by_year_sex / sum(field_count_by_year_sex)) %>% 
+  select(-field_count_by_year_sex)
+
+ggplot(data = salary_year_sex_field, aes(x = startyr, y = field_proportion, fill = sex)) + # Use year as the x variable, sex as the grouping variable and the proportion as the height of the bar
+  geom_bar(position = position_dodge(0.7), stat="identity", width = 0.7) + 
+  facet_grid(field ~ .) + # Facets the graph by field for easier comparison
+  theme_light() + # Good theme for faceted charts
+  labs(title = "Academic field Proportion by Starting Year and Sex") +
+  ylab("Proportion of Faculty") + 
+  xlab("Year") + 
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) # Changes the y-axis to show proportion as a percent
+
+# Model 1 and Summary
+
+model_1 <- lm(salary ~ startyr + sex + deg + rank + field + admin, data = salary_starting_year)
+summary(model_1)
+
+# Startyr vs. degyr relationship
+
+ggplot(data = salary_starting_year, aes(x = startyr, y = yrdeg)) + 
+  geom_point() +
+  theme_minimal() +
+  geom_abline(aes(intercept = 0, slope = 1), linewidth = 1)
+
+# Experience feature development
+
+salary_starting_year <- salary_starting_year %>%
+  mutate(experience = ifelse(startyr-yrdeg<0,0,startyr-yrdeg))
+
+# Model 2 and Summary
+
+model_2 <- lm(salary ~ startyr + experience + sex + deg*field + rank + admin, data = salary_starting_year)
+summary(model_2)
+
+# Anova Model Comparison
+
+anova(model_1, model_2)
+
+model_3 <- lm(salary ~ startyr + experience + sex + deg + field + rank + admin, data = salary_starting_year)
+anova(model_2, model_3)
+
+# Model 3 Summary and Residual Plots
+
+summary(model_3)
+plot(model_3$fitted.values, model_3$residuals)
+qqnorm(residuals(model_3))
+qqline(residuals(model_3))
+plot(density(residuals(model_3)))
+
+# Model 3 output with robust errors
+
+tab_model(model_3, vcov.fun = "HC1", show.se = TRUE)
+
+```
+
 ### Question 4
 
 ## Summary
