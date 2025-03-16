@@ -517,3 +517,5 @@ Future research should explore factors influencing time to promotion at earlier 
 ## Summary
 
 Summarize the findings
+
+Question 4 Summary: Our initial analysis of gender bias in promotions led us to believe that males had 1.54 times higher odds of promotion to Full Professor compared to female faculty. However, when we controlled for confounding variables this apparent gender effect largely disappeared and no longer became statistically significant.
