@@ -7,6 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message=FALSE)
 ```
 
 ## Introduction
@@ -53,6 +54,465 @@ We want to answer the question, "Did sex bias exist at the university in the
 ### Question 2
 
 ### Question 4
+```{r}
+library(dplyr)
+library(readr)
+library(tidyr)
+library(ggplot2)
+```
+# Investigating Gender Bias in University Promotions
+
+## Introduction
+
+In this analysis, we will investigate whether gender bias exists in the promotion process from Associate Professor to Full Professor at a University. Using applied statistical methods, we will examine whether male and female faculty members have significant differences in promotion eligibility when controlling for relevant factors.
+
+The question we aim to address is: **Does the University exhibit gender bias in granting promotions from Associate to Full Professor?**
+
+## Methodology Overview
+
+We will approach this analysis through the following steps:
+
+1. **Data Preparation**: Filter the dataset to only include Professors who began at the university as Assistant Professors, were promoted to Associates and thus were eligible for promotion to Full professors. We will also establish a reasonable time threshold for employment at the university to be considered eligible for a Full promotion
+3. **Statistical Analysis**: 
+   - Simple logistic regression with gender as the sole predictor
+   - Multiple logistic regression incorporating potential confounding variables
+
+This methodical approach will allow us to determine if any observed differences in promotions can be attributed to gender bias or if they can be explained by other factors.
+
+## Data Preparation
+
+### Focusing on Assistant Professors
+
+1. **Controlling for Unknown History**: By focusing on professors who started as Assistants, we eliminate the confounding factor of unknown prior history that might influence the promotion trajectory of those who joined the university directly as Associates. External hires at the Associate level may bring additional varying experiences and career achievements that could affect their promotion timelines.
+
+2. **Sample Size Impact**: This filtering reduced our sample size - from 1188 to 600 professors for men (49.5% reduction) and from 409 to 332 professors for women (18.8% reduction). While this reduction limits our statistical power somewhat, it strengthens the internal validity of our analysis by creating a more homogeneous comparison group to address potential sex bias in promotions.
+
+
+```{r}
+
+salary_data <- read.table("salary.txt", header = TRUE)
+# cat("Initial dataset dimensions:", dim(salary_data)[1], "rows")
+
+n_professors <- length(unique(salary_data$id))
+# cat("\nNumber of unique professors (IDs):", n_professors, "\n")
+
+# Find professors by IDs that were Assistant at some point
+assistant_ids <- salary_data %>%
+  filter(rank == "Assist") %>%
+  pull(id) %>%
+  unique()
+# cat("\nNumber of professors who were Assistant at some point:", length(assistant_ids), "\n")
+
+# Filter the data to keep all rows for professors who were Assistant at some point
+filtered_data <- salary_data %>%
+  filter(id %in% assistant_ids)
+
+# cat("\nGender distribution (unique professors):\n")
+gender_distribution_o <- salary_data %>%
+  select(id, sex) %>%
+  distinct() %>%
+  group_by(sex) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+# print(gender_distribution_o)
+
+# cat("\nGender distribution (unique professors):\n")
+gender_distribution_f <- filtered_data %>%
+  select(id, sex) %>%
+  distinct() %>%
+  group_by(sex) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+# print(gender_distribution_f)
+```
+
+### Focusing on Associate Professors
+In the second stage of our filtering process, we narrow our focus further to include only those professors who reached the Associate Professor rank at some point in their career at the university. This refinement filters out faculty members who remained at the Assistant level throughout the observation period, reducing our sample from 600 to 424 male professors (29.3% reduction) and from 332 to 184 female professors (44.6% reduction). This represents those who could potentially be promoted to Full Professor.
+This targeted approach allows us to specifically examine the promotion patterns from Associate to Full Professor, which is the primary focus of our research question regarding potential gender bias in senior faculty advancement.
+
+```{r}
+# Find IDs of professors who were Associates at some point
+associate_ids <- filtered_data %>%
+  filter(rank == "Assoc") %>%
+  pull(id) %>%
+  unique()
+
+# cat("Number of professors who were Associates at some point:", length(associate_ids), "\n")
+
+# Filter to keep only those professors (but keep all their rows)
+associate_data <- filtered_data %>%
+  filter(id %in% associate_ids)
+
+# Gender distribution of the Associate professors
+gender_distribution_associate <- associate_data %>%
+  select(id, sex) %>%
+  distinct() %>%
+  group_by(sex) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# cat("\nGender distribution of professors who became Associates:\n")
+# print(gender_distribution_associate)
+
+
+```
+
+### Calculating Sufficient Time for Promotion Eligibility
+
+In this step, we calculate the number of years each professor spent at the Associate rank. This calculation serves an important purpose: it allows us to filter out professors who did not spend sufficient time as Associates to be reasonably considered for promotion to Full Professor.
+
+Using the distribution of actual promotion times, examining the mean time to promotion and its standard deviation among successful cases we establish 4 years as the minimum threshold for promotion consideration. Professors who spent less than 4 years as Associate are excluded from our final analysis dataset.
+
+This filtering step ensures our analysis of potential gender bias focuses exclusively on professors who had a reasonable opportunity for promotion based on time. Without this control for time-based eligibility, our assessment of gender differences in promotion rates could be confounded by varying lengths of service at the Associate level.
+
+```{r warning=FALSE}
+
+promotion_years <- associate_data %>%
+  group_by(id) %>%
+  summarize(
+    # First year as Associate
+    first_assoc_year = min(year[rank == "Assoc"], na.rm = TRUE),
+    
+    # First year as Full (if applicable)
+    first_full_year = min(year[rank == "Full"], na.rm = TRUE),
+
+    # Check if they were ever promoted to Full
+    promoted_to_full = any(rank == "Full"),
+    
+    # Count the number of years as Associate
+    years_as_assoc = sum(rank == "Assoc", na.rm = TRUE),
+
+    # Get gender (assuming it will be the same for all records of an ID)
+    sex = first(sex)
+  ) %>%
+  # Replace infinite values with NA for professors who never became Full
+  mutate(
+    first_full_year = if_else(is.infinite(first_full_year), NA_real_, first_full_year)
+  )
+
+# Calculate the years it took to be promoted from Associate to Full
+promotion_years <- promotion_years %>%
+  mutate(
+    # Calculate years from Associate to Full
+    assoc_to_full = if_else(promoted_to_full, 
+                           first_full_year - first_assoc_year,
+                           NA_real_)
+  )
+
+# Calculate promotion time statistics by gender
+promotion_time_by_gender <- promotion_years %>%
+  filter(!is.na(assoc_to_full)) %>%
+  group_by(sex) %>%
+  summarize(
+    n = n(),
+    mean_years = mean(assoc_to_full),
+    median_years = median(assoc_to_full),
+    min_years = min(assoc_to_full),
+    max_years = max(assoc_to_full),
+    standard_deviation = sd(assoc_to_full)
+  )
+
+print(promotion_time_by_gender)
+
+# Merge the promotion time back to the original data
+lookup_table <- promotion_years %>%
+  select(id, assoc_to_full, first_assoc_year, first_full_year, promoted_to_full, years_as_assoc)
+
+associate_data_with_time <- associate_data %>%
+  left_join(lookup_table, by = "id")
+
+# Create a professor-level dataset with the requested variables
+professor_summary_all <- associate_data_with_time %>%
+  # Group by professor ID
+  group_by(id) %>%
+  # Keep first observation of each variable (they should be consistent within ID)
+  summarize(
+    sex = first(sex),
+    deg = first(deg),
+    yrdeg = first(yrdeg),
+    field = first(field),
+    startyr = first(startyr),
+    first_assoc_year = first(first_assoc_year),
+    assoc_to_full = first(assoc_to_full),
+    first_full_year = first(first_full_year),
+    promoted_to_full = first(promoted_to_full),
+    years_as_assoc = first(years_as_assoc)
+  )
+
+# Filter out professors who spent less than 4 years as Associate
+professor_summary <- professor_summary_all %>%
+  filter(years_as_assoc >= 4)
+
+```
+
+## Statistical Analysis
+
+### Initial Simple Model
+
+After carefully filtering our dataset to include only professors who:
+1. Began at the university as Assistant Professors
+2. Were promoted to Associate Professor
+3. Spent at least 4 years at the Associate rank (sufficient time for potential promotion)
+
+We proceeded with a simple logistic regression analysis to examine potential gender bias in promotions from Associate to Full Professor. Initially we will only focus on sex as a predictor and compare it to a more complex model that includes additional variables.
+
+```r
+model <- glm(formula = promoted_to_full ~ sex, family = binomial(link = "logit"),
+    data = professor_summary)
+```
+
+### Key Results
+
+The simple model yielded the following results:
+
+| Term | Estimate | Std. Error | z value | Pr(>&#124;z&#124;) |
+|------|----------|------------|---------|-------------------|
+| (Intercept) | -0.08456 | 0.16799 | -0.503 | 0.6147 |
+| sexM | 0.43030 | 0.20148 | 2.136 | 0.0327 * |
+
+The odds ratio for males compared to females is 1.54. This indicates that male professors have approximately 54% higher odds of being promoted to Full Professor compared to their female counterparts.
+
+### Interpretation
+
+These results suggest a statistically significant association between gender and promotion outcomes, with male faculty members having higher promotion rates than female faculty members. The p-value of 0.0327 indicates that this gender difference is unlikely to have occurred by chance.
+
+### Next Steps
+
+While these initial findings suggest potential gender bias, they do not account for other factors that might legitimately influence promotion. Our next step will be to develop a more complex logistic regression model that incorporates potential confounding variables. If the gender effect remains significant after controlling for these factors, it would provide stronger evidence of systemic bias in the promotion process.
+
+
+```{r}
+# Set female as the reference level
+professor_summary$sex <- factor(professor_summary$sex, levels = c("F", "M"))
+
+# Run simple logistic regression
+simple_model <- glm(promoted_to_full ~ sex, 
+            data = professor_summary, 
+            family = binomial(link = "logit"))
+
+# summary(simple_model)
+```
+
+## Complex Model with Confounding Variables
+
+To properly assess whether gender bias exists in promotions, we expanded our analysis to include potential confounding variables that might legitimately influence promotion decisions.
+
+### Complex Logistic Regression Model
+
+We constructed a model including the following variables:
+- Gender (sex)
+- Degree type (deg)
+- Year degree was obtained (yrdeg)
+- Academic field (field)
+- Year started at university (startyr)
+- Year first promoted to Associate Professor (first_assoc_year)
+
+The logistic regression formula was:
+```r
+promoted_to_full ~ sex + deg + yrdeg + field + startyr + first_assoc_year
+```
+
+### Key Results
+
+The complex model yielded the following coefficients:
+
+| Term | Estimate | Std. Error | z value | Pr(>&#124;z&#124;) |
+|------|----------|------------|---------|-------------------|
+| (Intercept) | 20.81779 | 2.32427 | 8.957 | < 2e-16 *** |
+| sexM | 0.05828 | 0.23497 | 0.248 | 0.80412 |
+| degPhD | 0.17510 | 0.37764 | 0.464 | 0.64288 |
+| degProf | -0.17216 | 0.62061 | -0.277 | 0.78146 |
+| yrdeg | 0.02457 | 0.03617 | 0.679 | 0.49700 |
+| fieldOther | 0.22649 | 0.28523 | 0.794 | 0.42716 |
+| fieldProf | 0.61141 | 0.36510 | 1.675 | 0.09401 . |
+| startyr | 0.18100 | 0.05970 | 3.032 | 0.00243 ** |
+| first_assoc_year | -0.43837 | 0.07185 | -6.101 | 1.05e-09 *** |
+
+The adjusted odds ratio for males compared to females is 1.06 (95% CI: 0.67-1.68).
+
+2. **Significant Predictors**:
+   - **Year first promoted to Associate** (first_assoc_year): Strong negative effect (coefficient = -0.43837, p < 0.001), indicating professors promoted to Associate earlier were much more likely to achieve Full Professor rank.
+   - **Year started at university** (startyr): Positive effect (coefficient = 0.18100, p = 0.00243), suggesting that when controlling for when they became Associates, professors who started at the institution more recently had better promotion outcomes.
+   
+3. **Marginally Significant Factor**:
+   - **Professional Field** (fieldProf): Positive effect (coefficient = 0.61141, p = 0.09401), suggesting a trend toward higher promotion rates in this field compared to the reference field.
+
+### Model Fit
+
+The model demonstrates substantially better fit compared to the null model:
+- Null deviance: 653.00 on 474 degrees of freedom
+- Residual deviance: 531.86 on 466 degrees of freedom
+- AIC: 549.86
+
+This reduction in deviance indicates that our selected variables explain a meaningful portion of the variation in promotion outcomes.
+
+### Interpretation
+
+The key finding from this analysis is that after accounting for important career timing variables and other factors, there is no statistically significant evidence of gender bias in promotions from Associate to Full Professor. The small remaining difference between male and female promotion rates is well within the range of random variation.
+
+The strongest predictors of promotion appear to be timing-related: when professors became Associates and when they started at the university. This suggests that timing, rather than gender, is the primary determinant of promotion to Full Professor at this university.
+
+```{r}
+# Ensure categorical variables are properly coded as factors
+professor_summary$sex <- factor(professor_summary$sex, levels = c("F", "M"))
+professor_summary$deg <- factor(professor_summary$deg)
+professor_summary$field <- factor(professor_summary$field)
+
+complex_model <- glm(promoted_to_full ~ sex + deg + yrdeg + field + startyr + first_assoc_year, 
+                    data = professor_summary, 
+                    family = binomial(link = "logit"))
+# summary(complex_model)
+```
+
+## Comparing Models to Assess Gender Bias in Promotions
+
+After analyzing our data with both simple and complex models, the critical step is to compare them systematically to determine whether the apparent gender differences in promotion rates represent genuine bias or are explained by other factors.
+
+### ANOVA Comparison
+
+To formally test whether the addition of confounding variables significantly improves model fit, we conducted an Analysis of Variance (ANOVA) comparison. The ANOVA test examines whether the reduction in deviance achieved by the complex model justifies the additional parameters.
+
+**Null Hypothesis**: The additional variables in the complex model do not significantly improve model fit compared to the simple model with only gender.
+
+**Results of Model Comparison (ANOVA)**:
+
+| Model | Resid. Df | Resid. Dev | Df | Deviance | Pr(>Chi) |
+|-------|-----------|------------|----|---------:|----------|
+| 1     | 473       | 648.43     |    |          |          |
+| 2     | 466       | 531.86     | 7  | 116.57   | < 2.2e-16 *** |
+
+The ANOVA test reveals a highly significant improvement in model fit with the complex model (p < 2.2e-16), indicating that the additional variables collectively explain a substantial portion of the variation in promotion outcomes.
+
+### Changes in Gender Effect
+
+The comparison of gender coefficients between models provides crucial insights:
+
+| Measure | Simple Model | Complex Model |
+|---------|-------------:|-------------:|
+| Coefficient | 0.4303 | 0.0583 |
+| Odds Ratio | 1.5377 | 1.06 |
+| 95% CI | 1.0365 to 2.2856 | 0.6674 to 1.6791 |
+| p-value | 0.0327 | 0.8041 |
+
+**Key Changes**:
+- Absolute change in coefficient: -0.372
+- Percent change: -86.5%
+
+This dramatic reduction in the gender coefficient (86.5% decrease) indicates that the apparent gender effect observed in the simple model is largely explained by the confounding variables in the complex model.
+
+Furthermore, the gender effect loses statistical significance in the complex model (p = 0.8041), and the confidence interval now includes 1.0, consistent with no effect. This transformation suggests that the initial gender difference was not due to bias in the promotion process but rather to differences in career timing and other factors between male and female faculty.
+
+### Relative Importance of Predictors
+
+The complex model reveals that timing variables have much stronger effects on promotion than gender:
+- The year a professor first became an Associate (coefficient = -0.43837, p < 0.001)
+- The year a professor started at the university (coefficient = 0.18100, p = 0.00243)
+```{r}
+
+gender_simple <- coef(simple_model)["sexM"]
+gender_complex <- coef(complex_model)["sexM"]
+
+odds_ratio_simple <- exp(gender_simple)
+odds_ratio_complex <- exp(gender_complex)
+
+ci_simple <- exp(confint(simple_model)["sexM", ])
+ci_complex <- exp(confint(complex_model)["sexM", ])
+
+change_absolute <- gender_complex - gender_simple
+change_percent <- (gender_complex - gender_simple) / gender_simple * 100
+
+# Create a summary of the comparison
+cat("Comparison of Gender Effect Between Models\n")
+
+#cat("Simple Model (Gender Only):\n")
+#cat("  Coefficient:", round(gender_simple, 4), "\n")
+#cat("  Odds Ratio:", round(odds_ratio_simple, 4), "\n")
+#cat("  95% CI:", round(ci_simple[1], 4), "to", round(ci_simple[2], 4), "\n")
+#cat("  p-value:", round(summary(simple_model)$coefficients["sexM", "Pr(>|z|)"], 4), "\n\n")
+
+#cat("Complex Model (With Confounders):\n")
+#cat("  Coefficient:", round(gender_complex, 4), "\n")
+#cat("  Odds Ratio:", round(odds_ratio_complex, 4), "\n")
+#cat("  95% CI:", round(ci_complex[1], 4), "to", round(ci_complex[2], 4), "\n")
+#cat("  p-value:", round(summary(complex_model)$coefficients["sexM", "Pr(>|z|)"], 4), "\n\n")
+
+#cat("Change in Gender Effect:\n")
+#cat("  Absolute change in coefficient:", round(change_absolute, 4), "\n")
+#cat("  Percent change:", round(change_percent, 1), "%\n\n")
+
+model_comparison <- anova(simple_model, complex_model, test = "Chisq")
+#cat("Model Comparison (ANOVA):\n")
+#print(model_comparison)
+
+plot_data <- data.frame(
+  Model = c("Simple Model", "Complex Model"),
+  Coefficient = c(gender_simple, gender_complex),
+  LowerCI = c(log(ci_simple[1]), log(ci_complex[1])),
+  UpperCI = c(log(ci_simple[2]), log(ci_complex[2])),
+  Significant = c(
+    summary(simple_model)$coefficients["sexM", "Pr(>|z|)"] < 0.05,
+    summary(complex_model)$coefficients["sexM", "Pr(>|z|)"] < 0.05
+  )
+)
+
+# Plot the gender coefficients with confidence intervals
+ggplot(plot_data, aes(x = Model, y = Coefficient, color = Significant)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = LowerCI, ymax = UpperCI), width = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  labs(
+    title = "Change in Gender Effect After Controlling for Confounders",
+    y = "Log Odds Coefficient for Male Gender",
+    caption = "Note: Coefficient of 0 indicates no gender effect"
+  ) +
+  scale_color_manual(values = c("black", "red"), 
+                     labels = c("Not Significant", "Significant")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+ggsave("gender_effect_comparison.png", width = 8, height = 6)
+```
+
+## Conclusion: Assessment of Gender Bias in Faculty Promotions
+
+After careful data preparation and statistical analysis, we fail to reject the null hypothesis that gender does not influence promotion from Associate to Full Professor when accounting for relevant career factors.
+
+### Summary of Findings
+
+Our initial analysis using a simple logistic regression model showed that male faculty appeared to have 1.54 times higher odds of promotion to Full Professor compared to female faculty. This statistically significant difference (p = 0.0327) might suggest gender bias when viewed in isolation.
+
+However, when we controlled for confounding variables—including degree type, year of degree, academic field, start year at the university, and year of promotion to Associate Professor this apparent gender effect largely disappeared. The odds ratio decreased dramatically to 1.06 and was no longer statistically significant (p = 0.8041). The ANOVA comparison confirmed that these additional factors significantly improved model fit (p < 2.2e-16).
+
+### Methodology Summary
+
+Our study design incorporated several methodological strengths that enhance the validity of our findings:
+
+1. **Homogeneous Sample Selection**: By limiting our analysis to professors who:
+   - Began at the university as Assistant Professors
+   - Were promoted to Associate Professor
+   - Spent at least 4 years at the Associate rank
+   We created a more comparable group of faculty members and controlled for potential selection effects.
+
+2. **Comprehensive Modeling**: By incorporating multiple variables, we accounted for legitimate factors that might influence promotion decisions, allowing us to isolate any potential gender effect.
+
+### Limitations
+
+Despite our thorough approach, several limitations should be acknowledged:
+
+1. **Salary Considerations**: This study did not incorporate salary data, which might reveal different patterns of gender disparities in academic compensation even in the absence of promotion bias.
+
+2. **Quality Metrics**: We did not have access to data on publication records, teaching evaluations, or service contributions, which could further explain promotion patterns.
+
+3. **Institutional Specificity**: Our findings are specific to this university and may not generalize to other institutions with different promotion practices and cultures.
+
+### Implications
+
+Based on our statistical findings, gender bias does not appear to be prevalent in promotion decisions from Associate to Full Professor at this institution when accounting for career timing and other relevant factors. The apparent gender disparities in raw promotion rates can be better explained by differences in career trajectories and fields.
+
+This does not mean that gender equity has been fully achieved in academia. Rather, it suggests that efforts to address gender disparities in this specific context might be more effectively focused on understanding why gender differences exist in career timing and field distribution, and on ensuring equitable opportunities earlier in the academic pipeline.
+
+Future research should explore factors influencing time to promotion at earlier career stages and examine whether gender differences exist in other aspects of faculty experience beyond promotion rates.
+
 
 ## Summary
 
