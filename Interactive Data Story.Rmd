@@ -248,8 +248,6 @@ salary_by_id <- salary %>%
   summarize(n())
 ```
 
-### Question 2
-
 We want to answer the question: "Has sex bias existed in the starting salaries of faculty members (salaries in the year hired)?"
 
 We'll define our null hypothesis as there being no difference in starting monthly salary of faculty due to the sex and our alternative hypothesis as there being a difference in starting monthly salary of faculty by sex.
@@ -1187,5 +1185,7 @@ Future research should explore factors influencing time to promotion at earlier 
 In summary, we created interactive data stories to address Questions 1, 2, and 4. Our findings from each question are summarized below.
 
 Question 1 Summary: Our initial analysis led us to believe that there was a difference in salary on the basis of sex. When we added more variables to our analysis, the results got more complicated. We concluded that the difference in salary is associated not just with sex but with many variables. However, these other explanatory variables are not independent of sex themselves -- the more prestigious the category gets, the higher the proportion of male candidates gets. It is possible that the discrepancy in salary is not due solely to sex but also the fact that there are a smaller proportion of female employees in the more prestigious categories.
+
+Question 2 Summary: Initial exploratory data analysis identified that male faculty members had higher average starting salaries than female faculty members in all observed years (1976-1995). We also identified that field and rank were positively correlated with starting salary. Rank and field were also correlated with gender with more female faculty starting in lower ranked faculty positions (Assistant vs. Full Professor) that had lower salaries and fewer female faculty members in the Professional field which had the highest salaries. We explored a number of multiple linear regression models to explore the relationship between starting salary and gender while controlling for other explanatory variables. We ultimately rejected the null hypothesis that there was no gender bias in salary and estimated that the 95% confidence interval estimate was that male faculty earned between \$86 and \$297 higher starting salaries per month after controlling for all other variables.
 
 Question 4 Summary: Our initial analysis of gender bias in promotions led us to believe that males had 1.54 times higher odds of promotion to Full Professor compared to female faculty. However, when we controlled for confounding variables this apparent gender effect largely disappeared and no longer became statistically significant.
