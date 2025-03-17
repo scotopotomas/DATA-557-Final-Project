@@ -34,7 +34,7 @@ administrative role.
 To address these questions, we developed two deliverables: an interactive web 
 application and an interactive data story. The interactive web application was 
 written using RShiny and answers Question 3. It is available 
-[here (FIXME)](https://website-name.com). Data stories were written for 
+[here](https://0195a0d2-2cd4-6de1-648a-a84a43189d4d.share.connect.posit.cloud/). Additionally, a writeup discussing Question 3 is included in our data submission. Interactive data stories were written for 
 Questions 1, 2, and 4 and are included in the Results section below.
 
 ## Results
@@ -48,8 +48,165 @@ web application.
 
 ### Question 1
 
-We want to answer the question, "Did sex bias exist at the university in the 
-1995?"
+We want to answer the question, "Did sex bias exist at the university in 1995?"
+
+To investigate this we will use linear regression. First, let's build a simple linear regression model to look at the relationship between sex (the explanatory variable) and salary (the response variable) for the data in 1995.
+
+Note that for all hypothesis tests in this section we will be using an alpha value of $\alpha=0.05$.
+
+```{r echo = T, results = 'hide'}
+library(dplyr)    # for data manipulation
+library(ggplot2)  # for plotting
+library(scales)   # for percentage scales in some plots (e.g. scale_y_continuous(labels=percent))
+```
+
+```{r}
+salary_data <- read.table(file = "salary.txt", header = TRUE)
+salary_data_1995 <- salary_data[salary_data$year == 95, ]
+
+simple_model <- lm(salary ~ sex, data=salary_data_1995)
+summary(simple_model)
+```
+This appears to show clear evidence that there is an association between salary and sex. If we let $\beta_1$ be the coefficient of the variable indicating a male, we reject the null hypothesis that $\beta_1 = 0$ with an alpha value less than $2e-16$. Further, this model indicates that moving from female to male results in a salary 
+increase of $1334.73. However, the adjusted R-squared value is low - just 0.08129. Could there be lurking variables we should consider?
+
+We will address these question by adding more explanatory variables to the linear regression. To decide which variables to include, we did some exploratory data analysis. We looked for variables that were not evenly distributed by sex.
+
+```{r}
+p_rank_95_percent <- ggplot(salary_data_1995, aes(x = rank, fill = sex)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent) +
+  labs(title = "Academic Rank in 1995 - Percentage by Sex",
+       x = "Rank",
+       y = "Percentage") +
+  theme_minimal()
+print(p_rank_95_percent) # rank
+
+yrdeg_means <- salary_data_1995 %>%
+  group_by(sex) %>%
+  summarise(mean_yrdeg = mean(yrdeg, na.rm = TRUE))
+
+p7 <- ggplot(salary_data_1995, aes(yrdeg))
+plot_of_sex_vs_yrdeg <- p7 + geom_density(aes(fill = factor(sex)), alpha = 0.8) + 
+    geom_vline(
+    data = yrdeg_means,
+    aes(xintercept = mean_yrdeg),
+    linetype = "dashed",
+    linewidth = 1
+  ) +
+  labs(title = "Sex vs Year when Highest Degree was attained in 1995 (Density Plot)", 
+       x = "Year in which Highest Degree was Attained",
+       fill = "sex")
+print(plot_of_sex_vs_yrdeg) # yrdeg
+
+salary_data_1995_prop <- salary_data_1995 %>%
+  count(field, sex) %>%  # Count occurrences per field and sex
+  group_by(field) %>%  
+  mutate(prop = n / sum(n))  # Compute proportion
+p_field_bar <- ggplot(salary_data_1995_prop, aes(x = field, y = prop, fill = sex)) +
+  geom_bar(stat = "identity", position = "stack") +  # Use "stack" for a stacked bar chart
+  labs(title = "Fields of Work by Sex in 1995 (Stacked Proportion)",
+       x = "Field",
+       y = "Proportion") +
+  theme_minimal()
+print(p_field_bar) # field
+
+p_hire_dens <- ggplot(salary_data_1995, aes(x = startyr, fill = sex)) +
+  geom_density(alpha = 0.3, position = "fill") +
+  labs(title = "Percentage of Hires by Start Year For Employees in 1995",
+       x = "Year of Hire",
+       y = "Proportion") +
+  scale_y_continuous(labels = percent) +
+  theme_minimal()
+print(p_hire_dens) # startyr
+
+salary_data_1995_prop <- salary_data_1995 %>%
+  count(admin, sex) %>%  # Count occurrences per field and sex
+  group_by(admin) %>%  
+  mutate(prop = n / sum(n))  # Compute proportion
+p_field_bar <- ggplot(salary_data_1995_prop, aes(x = admin, y = prop, fill = sex)) +
+  geom_bar(stat = "identity", position = "stack") +  # Use "stack" for a stacked bar chart
+  labs(title = "Possession of Admin Status by Sex in 1995 (Stacked Proportion)",
+       x = "Admin",
+       y = "Proportion") +
+  theme_minimal()
+print(p_field_bar) # admin
+
+salary_data_1995_prop <- salary_data_1995 %>%
+  count(deg, sex) %>%  # Count occurrences per field and sex
+  group_by(deg) %>%  
+  mutate(prop = n / sum(n))  # Compute proportion
+p_field_bar <- ggplot(salary_data_1995_prop, aes(x = deg, y = prop, fill = sex)) +
+  geom_bar(stat = "identity", position = "stack") +  # Use "stack" for a stacked bar chart
+  labs(title = "Deg Status by Sex in 1995 (Stacked Proportion)",
+       x = "Deg",
+       y = "Proportion") +
+  theme_minimal()
+print(p_field_bar) # deg
+```
+
+From these graphs, we want to look at rank, field, deg, yrdeg, startyr, and admin. Before we do this, however, let's consider yrdeg and startyr. It is likely that these variables are related -- the year an employee got their degree is likely related to their start year. We will fit models with only one of these variables and see what we see.
+
+First, we fit a model without yrdeg:
+
+```{r}
+model_no_yrdeg <- lm(salary ~ sex + rank + field + deg + startyr + admin, data=salary_data_1995)
+summary(model_no_yrdeg)
+```
+We see that the p-value for startyr, $0.303$, is higher than the alpha value $\alpha = 0.05$. This means that with this model we fail to reject the null hypothesis that the coefficient of startyr equals $0$.
+
+Next, we will fit a model with yrdeg but without startyr:
+
+```{r}
+model_no_startyr <- lm(salary ~ sex + rank + field + deg + yrdeg + admin, data=salary_data_1995)
+summary(model_no_startyr)
+```
+In this model, the p-value for yrdeg, $1.34e-08$, is less than the alpha value $0.05$. We reject the null hypothesis that the coefficient of yrdeg is not equal to $0$. In fact, every coefficient in this model is statistically significantly different than $0$. We will use this model to discuss differences in salary.
+
+The Adjusted R-Squared value in the previous two models are similar - 0.5122 versus 0.5217. These are both much higher than the Adjusted R-Squared of 0.08129 from the original model using simple linear regression.
+
+For each indicator variable in our model, the coefficient represents the average difference in salary between the group represented by the indicator variable and the reference group(s), holding other variables constant. In this model, the variables rankFull, fieldProf, and admin have the highest coefficients. These each correspond to the most prestigious class in each categorical variable.
+
+Let's revisit our graphs of these three fields with respect to sex.
+
+```{r}
+p_rank_95_percent <- ggplot(salary_data_1995, aes(x = rank, fill = sex)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent) +
+  labs(title = "Academic Rank in 1995 - Percentage by Sex",
+       x = "Rank",
+       y = "Percentage") +
+  theme_minimal()
+print(p_rank_95_percent)
+
+salary_data_1995_prop <- salary_data_1995 %>%
+  count(field, sex) %>%  # Count occurrences per field and sex
+  group_by(field) %>%  
+  mutate(prop = n / sum(n))  # Compute proportion
+p_field_bar <- ggplot(salary_data_1995_prop, aes(x = field, y = prop, fill = sex)) +
+  geom_bar(stat = "identity", position = "stack") +  # Use "stack" for a stacked bar chart
+  labs(title = "Fields of Work by Sex in 1995 (Stacked Proportion)",
+       x = "Field",
+       y = "Proportion") +
+  theme_minimal()
+print(p_field_bar)
+
+salary_data_1995_prop <- salary_data_1995 %>%
+  count(admin, sex) %>%  # Count occurrences per field and sex
+  group_by(admin) %>%  
+  mutate(prop = n / sum(n))  # Compute proportion
+p_field_bar <- ggplot(salary_data_1995_prop, aes(x = admin, y = prop, fill = sex)) +
+  geom_bar(stat = "identity", position = "stack") +  # Use "stack" for a stacked bar chart
+  labs(title = "Possession of Admin Status by Sex in 1995 (Stacked Proportion)",
+       x = "Admin",
+       y = "Proportion") +
+  theme_minimal()
+print(p_field_bar)
+```
+
+We see that all three of these categories have trends by sex. In particular, the variables with the highest coefficients in our model -- full rank, field professor, and being an admin -- have a higher proportion of males than the other categories in each variable.
+
+Thus we conclude that the difference in salary is associated not just with sex but with many variables. However, these other explanatory variables are not independent of sex themselves -- the more prestigious the category gets, the higher the proportion of male candidates gets. Perhaps the discrepancy in salary is not due solely to sex but also the fact that there are a smaller proportion of female employees in the more prestigious categories.
 
 ### Question 2
 
@@ -1027,6 +1184,8 @@ Future research should explore factors influencing time to promotion at earlier 
 
 ## Summary
 
-Summarize the findings
+In summary, we created interactive data stories to address Questions 1, 2, and 4. Our findings from each question are summarized below.
+
+Question 1 Summary: Our initial analysis led us to believe that there was a difference in salary on the basis of sex. When we added more variables to our analysis, the results got more complicated. We concluded that the difference in salary is associated not just with sex but with many variables. However, these other explanatory variables are not independent of sex themselves -- the more prestigious the category gets, the higher the proportion of male candidates gets. It is possible that the discrepancy in salary is not due solely to sex but also the fact that there are a smaller proportion of female employees in the more prestigious categories.
 
 Question 4 Summary: Our initial analysis of gender bias in promotions led us to believe that males had 1.54 times higher odds of promotion to Full Professor compared to female faculty. However, when we controlled for confounding variables this apparent gender effect largely disappeared and no longer became statistically significant.
